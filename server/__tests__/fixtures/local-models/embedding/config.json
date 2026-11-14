@@ -1,0 +1,1 @@
+{"model_type": "bert", "architectures": ["BertModel"], "hidden_size": 4, "num_labels": 1, "id2label": {"0": "SCORE"}}

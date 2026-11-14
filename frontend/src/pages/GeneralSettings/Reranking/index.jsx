@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Sidebar from "@/components/SettingsSidebar";
 import Reranking from "@/models/reranking";
+import LocalModels from "@/models/localModels";
 import showToast from "@/utils/toast";
 import paths from "@/utils/paths";
 
@@ -24,6 +25,7 @@ function Field({ id, label, children }) {
 export default function RerankingSettings() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(null);
+  const [localModels, setLocalModels] = useState([]);
   const [loadError, setLoadError] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [clearKey, setClearKey] = useState(false);
@@ -33,9 +35,14 @@ export default function RerankingSettings() {
 
   useEffect(() => {
     let active = true;
-    Reranking.get()
-      .then((data) => {
-        if (active) setSettings(data.settings);
+    Promise.all([Reranking.get(), LocalModels.list()])
+      .then(([data, library]) => {
+        if (active) {
+          setSettings(data.settings);
+          setLocalModels(
+            library.models.filter((model) => model.kind === "reranker")
+          );
+        }
       })
       .catch(() => {
         if (active) setLoadError(true);
@@ -109,6 +116,11 @@ export default function RerankingSettings() {
                     }
                   >
                     <option value="native">{t("reranking:native")}</option>
+                    <option value="local">{t("reranking:local")}</option>
+                    <option value="openai-rerank">
+                      {t("reranking:openaiRerank")}
+                    </option>
+                    <option value="openai">{t("reranking:openaiChat")}</option>
                     <option value="cohere">{t("reranking:cohere")}</option>
                     <option value="tei">{t("reranking:tei")}</option>
                   </select>
@@ -130,6 +142,36 @@ export default function RerankingSettings() {
                       {t("reranking:nativeHint")}
                     </p>
                   </>
+                ) : settings.RerankProvider === "local" ? (
+                  <>
+                    <Field id="rerank-local-model" label={t("reranking:model")}>
+                      <select
+                        id="rerank-local-model"
+                        className={inputClass}
+                        required
+                        value={settings.RerankLocalModel || ""}
+                        onChange={(event) =>
+                          change("RerankLocalModel", event.target.value)
+                        }
+                      >
+                        <option value="">{t("reranking:chooseLocal")}</option>
+                        {localModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <p className="text-sm opacity-70">
+                      {t("reranking:localHint")}
+                    </p>
+                    <a
+                      className="text-sm underline"
+                      href={paths.settings.localModels()}
+                    >
+                      {t("localModels:manage")}
+                    </a>
+                  </>
                 ) : (
                   <>
                     <Field id="rerank-endpoint" label={t("reranking:endpoint")}>
@@ -144,12 +186,16 @@ export default function RerankingSettings() {
                         placeholder={
                           settings.RerankProvider === "tei"
                             ? "http://localhost:8080/rerank"
-                            : "https://api.cohere.com/v2/rerank"
+                            : settings.RerankProvider === "openai"
+                              ? "http://localhost:8080/v1/chat/completions"
+                              : settings.RerankProvider === "openai-rerank"
+                                ? "http://localhost:8080/v1/rerank"
+                                : "https://api.cohere.com/v2/rerank"
                         }
                         required
                       />
                     </Field>
-                    {settings.RerankProvider === "cohere" ? (
+                    {settings.RerankProvider !== "tei" ? (
                       <Field id="rerank-model" label={t("reranking:model")}>
                         <input
                           id="rerank-model"
@@ -165,6 +211,15 @@ export default function RerankingSettings() {
                     ) : (
                       <p className="text-sm opacity-70">
                         {t("reranking:teiHint")}
+                      </p>
+                    )}
+                    {["openai", "openai-rerank"].includes(
+                      settings.RerankProvider
+                    ) && (
+                      <p className="text-sm opacity-70">
+                        {t(
+                          `reranking:${settings.RerankProvider === "openai" ? "openaiChatHint" : "openaiRerankHint"}`
+                        )}
                       </p>
                     )}
                     <Field id="rerank-key" label={t("reranking:apiKey")}>

@@ -138,7 +138,7 @@ const EMBEDDERS = [
     description: "Run powerful embedding models from Mistral AI.",
   },
   {
-    name: "Generic OpenAI",
+    name: "OpenAI-compatible API",
     value: "generic-openai",
     logo: GenericOpenAiLogo,
     options: (settings) => (

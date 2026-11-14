@@ -81,6 +81,7 @@ const { dummyHashCompare } = require("../utils/helpers/dummyHashCompare");
 function systemEndpoints(app) {
   if (!app) return;
   require("./rerank").rerankEndpoints(app);
+  require("./localModels").localModelEndpoints(app);
 
   app.get("/ping", (_, response) => {
     response.status(200).json({ online: true });

@@ -1,11 +1,64 @@
 import React, { useState } from "react";
 import { CaretDown, CaretUp, Info } from "@phosphor-icons/react";
 import { Tooltip } from "react-tooltip";
+import { useTranslation } from "react-i18next";
+import LocalModels from "@/models/localModels";
 
 export default function GenericOpenAiEmbeddingOptions({ settings }) {
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const { t } = useTranslation();
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const testConnection = async (event) => {
+    const form = event.currentTarget.closest("form");
+    const data = new FormData(form);
+    setTesting(true);
+    setError("");
+    setResult(null);
+    try {
+      setResult(
+        await LocalModels.testEmbedding({
+          basePath: data.get("EmbeddingBasePath"),
+          model: data.get("EmbeddingModelPref"),
+          apiKey: data.get("GenericOpenAiEmbeddingApiKey"),
+        })
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTesting(false);
+    }
+  };
   return (
     <div className="w-full flex flex-col gap-y-7">
+      <p className="text-sm text-theme-text-secondary">
+        {t("localModels:remoteHint")}
+      </p>
+      <p className="text-sm text-theme-text-secondary">
+        {t("localModels:remoteTestHint")}
+      </p>
+      <button
+        type="button"
+        disabled={testing}
+        onClick={testConnection}
+        className="w-fit rounded-lg bg-primary-button px-4 py-2 text-white text-sm disabled:opacity-50"
+      >
+        {testing ? t("localModels:testing") : t("localModels:testRemote")}
+      </button>
+      {result && (
+        <p role="status" className="text-sm text-theme-text-primary">
+          {t("localModels:remoteResult", {
+            dimensions: result.dimensions,
+            ms: result.elapsedMs,
+          })}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
       <div className="w-full flex items-center gap-[36px] mt-1.5 flex-wrap">
         <div className="flex flex-col w-60">
           <label className="text-white text-sm font-semibold block mb-3">

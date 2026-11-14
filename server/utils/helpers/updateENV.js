@@ -8,7 +8,14 @@ const KEY_MAPPING = {
     envKey: "RERANK_PROVIDER",
     checks: [
       (value) =>
-        ["native", "cohere", "tei"].includes(value)
+        [
+          "native",
+          "local",
+          "cohere",
+          "tei",
+          "openai",
+          "openai-rerank",
+        ].includes(value)
           ? null
           : "Invalid rerank provider.",
     ],
@@ -35,6 +42,16 @@ const KEY_MAPPING = {
     envKey: "RERANK_MODEL",
     checks: [
       (value) => (isSafeConfigString(value) ? null : "Invalid rerank model."),
+    ],
+  },
+  RerankLocalModel: {
+    envKey: "RERANK_LOCAL_MODEL",
+    // The rerank endpoint validates existence when the local provider is active.
+    checks: [
+      (value) =>
+        !value || /^local-[a-f0-9-]{36}$/.test(value)
+          ? null
+          : "Invalid local reranker ID.",
     ],
   },
   RerankApiKey: {
@@ -323,7 +340,22 @@ const KEY_MAPPING = {
   },
   EmbeddingModelPref: {
     envKey: "EMBEDDING_MODEL_PREF",
-    checks: [isNotEmpty],
+    checks: [
+      isNotEmpty,
+      (value) => {
+        if (
+          process.env.EMBEDDING_ENGINE !== "native" ||
+          !value.startsWith("local-")
+        )
+          return null;
+        try {
+          require("../LocalModelLibrary").getModel(value, "embedding");
+          return null;
+        } catch {
+          return "Invalid local embedding model.";
+        }
+      },
+    ],
     postUpdate: [handleVectorStoreReset, downloadEmbeddingModelIfRequired],
   },
   EmbeddingModelMaxChunkLength: {

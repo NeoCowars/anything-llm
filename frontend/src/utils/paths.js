@@ -136,6 +136,7 @@ export default {
       return "/settings/embedding-preference";
     },
     reranking: () => "/settings/reranking",
+    localModels: () => "/settings/local-models",
     imageGenerationPreference: () => {
       return "/settings/image-generation-preference";
     },

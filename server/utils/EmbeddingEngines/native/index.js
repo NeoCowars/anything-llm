@@ -3,6 +3,7 @@ const fs = require("fs");
 const { toChunks, reportEmbeddingProgress } = require("../../helpers");
 const { v4 } = require("uuid");
 const { SUPPORTED_NATIVE_EMBEDDING_MODELS } = require("./constants");
+const ModelLibrary = require("../../LocalModelLibrary");
 
 class NativeEmbedder {
   static defaultModel = "Xenova/all-MiniLM-L6-v2";
@@ -36,16 +37,21 @@ class NativeEmbedder {
   // and may go offline at any time at Mintplex Labs's discretion.
   #fallbackHost = "https://cdn.anythingllm.com/support/models/";
 
-  constructor() {
+  constructor(modelId = null) {
     this.className = "NativeEmbedder";
-    this.model = this.getEmbeddingModel();
+    this.model = modelId ?? this.getEmbeddingModel();
+    this.localModel = this.model.startsWith("local-")
+      ? ModelLibrary.getModel(this.model, "embedding")
+      : null;
     this.modelInfo = this.getEmbedderInfo();
     this.cacheDir = path.resolve(
       process.env.STORAGE_DIR
         ? path.resolve(process.env.STORAGE_DIR, `models`)
         : path.resolve(__dirname, `../../../storage/models`)
     );
-    this.modelPath = path.resolve(this.cacheDir, ...this.model.split("/"));
+    this.modelPath =
+      this.localModel?.modelPath ??
+      path.resolve(this.cacheDir, ...this.model.split("/"));
     this.modelDownloaded = fs.existsSync(this.modelPath);
 
     // Limit of how many strings we can process in a single pass to stay with resource or network limits
@@ -53,7 +59,8 @@ class NativeEmbedder {
     this.embeddingMaxChunkLength = this.modelInfo.embeddingMaxChunkLength;
 
     // Make directory when it does not exist in existing installations
-    if (!fs.existsSync(this.cacheDir)) fs.mkdirSync(this.cacheDir);
+    if (!fs.existsSync(this.cacheDir))
+      fs.mkdirSync(this.cacheDir, { recursive: true });
     this.log(`Initialized ${this.model}`);
   }
 
@@ -68,16 +75,20 @@ class NativeEmbedder {
   static _getEmbeddingModel() {
     const envModel =
       process.env.EMBEDDING_MODEL_PREF ?? NativeEmbedder.defaultModel;
+    if (envModel.startsWith("local-")) {
+      ModelLibrary.getModel(envModel, "embedding");
+      return envModel;
+    }
     if (NativeEmbedder.supportedModels?.[envModel]) return envModel;
     return NativeEmbedder.defaultModel;
   }
 
   get embeddingPrefix() {
-    return NativeEmbedder.supportedModels[this.model]?.chunkPrefix || "";
+    return this.modelInfo.chunkPrefix || "";
   }
 
   get queryPrefix() {
-    return NativeEmbedder.supportedModels[this.model]?.queryPrefix || "";
+    return this.modelInfo.queryPrefix || "";
   }
 
   /**
@@ -86,9 +97,23 @@ class NativeEmbedder {
    * @returns {{id: string, name: string, description: string, lang: string, size: string, modelCard: string}[]}
    */
   static availableModels() {
-    return Object.values(NativeEmbedder.supportedModels).map(
-      (model) => model.apiInfo
-    );
+    return [
+      ...Object.values(NativeEmbedder.supportedModels).map(
+        (model) => model.apiInfo
+      ),
+      ...ModelLibrary.listModels()
+        .filter((model) => model.kind === "embedding")
+        .map((model) => ({
+          id: model.id,
+          name: model.name,
+          description:
+            "Imported ONNX model — runs locally without downloading.",
+          lang: "Custom",
+          size: (model.sizeBytes / 1024 / 1024).toFixed(1) + " MB",
+          modelCard: "",
+          local: true,
+        })),
+    ];
   }
 
   /**
@@ -101,10 +126,7 @@ class NativeEmbedder {
    * @returns {string}
    */
   getEmbeddingModel() {
-    const envModel =
-      process.env.EMBEDDING_MODEL_PREF ?? NativeEmbedder.defaultModel;
-    if (NativeEmbedder.supportedModels?.[envModel]) return envModel;
-    return NativeEmbedder.defaultModel;
+    return NativeEmbedder._getEmbeddingModel();
   }
 
   /**
@@ -114,8 +136,13 @@ class NativeEmbedder {
    * @returns {Object}
    */
   getEmbedderInfo() {
-    const model = this.getEmbeddingModel();
-    return NativeEmbedder.supportedModels[model];
+    if (this.localModel)
+      return {
+        ...this.localModel,
+        maxConcurrentChunks: 5,
+        embeddingMaxChunkLength: this.localModel.maxChunkLength,
+      };
+    return NativeEmbedder.supportedModels[this.model];
   }
 
   #tempfilePath() {
@@ -137,6 +164,21 @@ class NativeEmbedder {
 
   async #fetchWithHost(hostOverride = null) {
     try {
+      if (this.localModel) {
+        const release = ModelLibrary.acquire(this.model);
+        try {
+          const { pipeline } = await import("@xenova/transformers");
+          const client = await pipeline("feature-extraction", this.model, {
+            local_files_only: true,
+            quantized: this.localModel.quantized,
+            cache_dir: ModelLibrary.root(),
+          });
+          ModelLibrary.markLoaded(this.model);
+          return { pipeline: client, retry: false, error: null };
+        } finally {
+          release();
+        }
+      }
       // Convert ESM to CommonJS via import so we can load this library.
       const pipeline = (...args) =>
         import("@xenova/transformers").then(({ pipeline, env }) => {
@@ -173,7 +215,10 @@ class NativeEmbedder {
     } catch (error) {
       return {
         pipeline: null,
-        retry: hostOverride === null ? this.#fallbackHost : false,
+        retry:
+          !this.localModel && hostOverride === null
+            ? this.#fallbackHost
+            : false,
         error,
       };
     }
@@ -273,8 +318,8 @@ class NativeEmbedder {
       if (idx === 0) await this.#writeToTempfile(tmpFilePath, "[");
       let data;
       let output = await pipeline(chunk, {
-        pooling: "mean",
-        normalize: true,
+        pooling: this.localModel?.pooling ?? "mean",
+        normalize: this.localModel?.normalize ?? true,
       });
 
       if (output.length === 0) {

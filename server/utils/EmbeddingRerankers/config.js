@@ -1,8 +1,16 @@
-const PROVIDERS = ["native", "cohere", "tei"];
+const PROVIDERS = [
+  "native",
+  "local",
+  "cohere",
+  "tei",
+  "openai",
+  "openai-rerank",
+];
 const DEFAULTS = {
   RerankProvider: "native",
   RerankEndpoint: "",
   RerankModel: "",
+  RerankLocalModel: "",
   RerankCandidateCount: 30,
   RerankTimeoutMs: 15000,
 };
@@ -11,6 +19,7 @@ const ENV_KEYS = {
   RerankProvider: "RERANK_PROVIDER",
   RerankEndpoint: "RERANK_ENDPOINT",
   RerankModel: "RERANK_MODEL",
+  RerankLocalModel: "RERANK_LOCAL_MODEL",
   RerankApiKey: "RERANK_API_KEY",
   RerankCandidateCount: "RERANK_CANDIDATE_COUNT",
   RerankTimeoutMs: "RERANK_TIMEOUT_MS",
@@ -41,7 +50,12 @@ function validateSettings(settings) {
     )
       throw new Error(`${key} must be an integer between ${min} and ${max}.`);
   }
-  for (const key of ["RerankEndpoint", "RerankModel", "RerankApiKey"]) {
+  for (const key of [
+    "RerankEndpoint",
+    "RerankModel",
+    "RerankLocalModel",
+    "RerankApiKey",
+  ]) {
     if (!isSafeConfigString(settings[key]))
       throw new Error(
         `${key} must not contain control characters, special whitespace, quotes, backticks or #.`
@@ -64,10 +78,21 @@ function validateSettings(settings) {
         "Use an HTTP(S) rerank endpoint without URL credentials or fragments."
       );
   }
-  if (settings.RerankProvider !== "native" && !settings.RerankEndpoint)
+  if (
+    !["native", "local"].includes(settings.RerankProvider) &&
+    !settings.RerankEndpoint
+  )
     throw new Error("A full rerank endpoint URL is required.");
-  if (settings.RerankProvider === "cohere" && !settings.RerankModel.trim())
+  if (
+    ["cohere", "openai", "openai-rerank"].includes(settings.RerankProvider) &&
+    !settings.RerankModel.trim()
+  )
     throw new Error("The API model name is required.");
+  if (settings.RerankProvider === "local")
+    require("../LocalModelLibrary").getModel(
+      settings.RerankLocalModel,
+      "reranker"
+    );
   return settings;
 }
 

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import System from "@/models/system";
+import { useTranslation } from "react-i18next";
+import paths from "@/utils/paths";
 
 export default function NativeEmbeddingOptions({ settings }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(
@@ -36,6 +39,15 @@ export default function NativeEmbeddingOptions({ settings }) {
 
   return (
     <div className="w-full flex flex-col gap-y-4">
+      <Link
+        className="text-sm underline text-theme-text-primary"
+        to={paths.settings.localModels()}
+      >
+        {t("localModels:manage")}
+      </Link>
+      <p className="text-sm text-theme-text-secondary">
+        {t("localModels:embeddingWarning")}
+      </p>
       <div className="w-full flex flex-col mt-1.5">
         <div className="flex flex-col w-96">
           <label className="text-white text-sm font-semibold block mb-3">
@@ -44,27 +56,21 @@ export default function NativeEmbeddingOptions({ settings }) {
           <select
             name="EmbeddingModelPref"
             required={true}
-            defaultValue={selectedModel}
+            value={
+              loading ? "--loading-available-models--" : selectedModel || ""
+            }
             className="border-none bg-theme-settings-input-bg border-gray-500 text-theme-text-primary text-sm rounded-lg block w-60 p-2.5"
             onChange={(e) => setSelectedModel(e.target.value)}
           >
             {loading ? (
-              <option
-                value="--loading-available-models--"
-                disabled={true}
-                selected={true}
-              >
+              <option value="--loading-available-models--" disabled={true}>
                 --loading available models--
               </option>
             ) : (
               <optgroup label="Available embedding models">
                 {availableModels.map((model) => {
                   return (
-                    <option
-                      key={model.id}
-                      value={model.id}
-                      selected={selectedModel === model.id}
-                    >
+                    <option key={model.id} value={model.id}>
                       {model.name}
                     </option>
                   );
@@ -84,14 +90,16 @@ export default function NativeEmbeddingOptions({ settings }) {
             <p className="text-theme-text-secondary text-xs font-normal block">
               Download Size: {selectedModelInfo?.size}
             </p>
-            <Link
-              to={selectedModelInfo?.modelCard}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-theme-text-secondary text-xs font-normal block underline hover:text-theme-text-primary"
-            >
-              View model card on Hugging Face &rarr;
-            </Link>
+            {selectedModelInfo?.modelCard && (
+              <Link
+                to={selectedModelInfo?.modelCard}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-theme-text-secondary text-xs font-normal block underline hover:text-theme-text-primary"
+              >
+                View model card on Hugging Face &rarr;
+              </Link>
+            )}
           </div>
         )}
       </div>

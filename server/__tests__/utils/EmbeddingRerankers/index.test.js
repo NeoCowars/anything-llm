@@ -80,6 +80,71 @@ test("TEI contract omits a model name and maps scores by index", async () => {
   };
   expect((await rerank("试用期？", docs, config("tei")))[0].index).toBe(1);
 });
+
+test.each(["results", "data"])(
+  "OpenAI rerank extension handles %s and preserves zero scores",
+  async (key) => {
+    handler = (_req, res, body) => {
+      expect(body).toEqual({
+        model: "fixture-model",
+        query: "q",
+        documents: docs.map((doc) => doc.text),
+        top_n: 2,
+      });
+      res.end(
+        JSON.stringify({
+          [key]: [
+            { index: 0, score: 0 },
+            { index: 1, relevance_score: 0.9 },
+          ],
+        })
+      );
+    };
+    expect(await rerank("q", docs, config("openai-rerank"))).toEqual([
+      { index: 1, score: 0.9 },
+      { index: 0, score: 0 },
+    ]);
+  }
+);
+
+test("OpenAI chat scoring uses JSON mode and keeps documents as data", async () => {
+  handler = (_req, res, body) => {
+    expect(body.model).toBe("fixture-model");
+    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(body.stream).toBe(false);
+    expect(JSON.parse(body.messages[1].content)).toEqual({
+      query: "q",
+      documents: docs.map(({ text }, index) => ({ index, text })),
+    });
+    res.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                results: [
+                  { index: 0, score: 0.1 },
+                  { index: 1, score: 0.8 },
+                ],
+              }),
+            },
+          },
+        ],
+      })
+    );
+  };
+  expect((await rerank("q", docs, config("openai")))[0].index).toBe(1);
+});
+
+test.each([
+  "not JSON",
+  '{"results":[{"index":0,"score":0.5}]}',
+  '{"results":[{"index":0,"score":0.5},{"index":0,"score":0.9}]}',
+])("rejects incomplete or malformed chat rankings %s", async (content) => {
+  handler = (_req, res) =>
+    res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+  await expect(rerank("q", docs, config("openai"))).rejects.toThrow();
+});
 test("HTTP errors do not expose a service response containing secrets", async () => {
   handler = (_req, res) => {
     res.writeHead(401);

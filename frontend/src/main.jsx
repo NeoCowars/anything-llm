@@ -140,6 +140,15 @@ const router = createBrowserRouter([
         },
       },
       {
+        path: "/settings/local-models",
+        lazy: async () => {
+          const { default: LocalModelSettings } = await import(
+            "@/pages/GeneralSettings/LocalModels"
+          );
+          return { element: <AdminRoute Component={LocalModelSettings} /> };
+        },
+      },
+      {
         path: "/settings/vector-database",
         lazy: async () => {
           const { default: GeneralVectorDatabase } = await import(

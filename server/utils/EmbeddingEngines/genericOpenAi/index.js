@@ -5,19 +5,23 @@ const {
 } = require("../../helpers");
 
 class GenericOpenAiEmbedder {
-  constructor() {
-    if (!process.env.EMBEDDING_BASE_PATH)
+  constructor(options = {}) {
+    const basePath = options.basePath ?? process.env.EMBEDDING_BASE_PATH;
+    if (!basePath)
       throw new Error(
         "GenericOpenAI must have a valid base path to use for the api."
       );
     this.className = "GenericOpenAiEmbedder";
     const { OpenAI: OpenAIApi } = require("openai");
-    this.basePath = process.env.EMBEDDING_BASE_PATH;
+    this.basePath = basePath;
     this.openai = new OpenAIApi({
       baseURL: this.basePath,
-      apiKey: process.env.GENERIC_OPEN_AI_EMBEDDING_API_KEY ?? null,
+      apiKey:
+        (options.apiKey ?? process.env.GENERIC_OPEN_AI_EMBEDDING_API_KEY) ||
+        "no-key-required",
+      ...(options.timeout ? { timeout: options.timeout, maxRetries: 0 } : {}),
     });
-    this.model = process.env.EMBEDDING_MODEL_PREF ?? null;
+    this.model = options.model ?? process.env.EMBEDDING_MODEL_PREF ?? null;
     this.embeddingMaxChunkLength = maximumChunkLength();
 
     // this.maxConcurrentChunks is delegated to the getter below.
@@ -138,6 +142,7 @@ class GenericOpenAiEmbedder {
           .create({
             model: this.model,
             input: chunk,
+            encoding_format: "float",
           })
           .then((result) => resolve({ data: result?.data, error: null }))
           .catch((e) => {
@@ -154,11 +159,42 @@ class GenericOpenAiEmbedder {
       // will be incomplete.
       if (error)
         throw new Error(`GenericOpenAI Failed to embed: ${error.message}`);
-      allResults.push(...(data || []));
+      const seen = new Set();
+      if (!Array.isArray(data) || data.length !== chunk.length)
+        throw new Error(
+          "GenericOpenAI returned invalid embeddings or document indices."
+        );
+      for (const row of data) {
+        if (
+          !row ||
+          !Number.isInteger(row.index) ||
+          row.index < 0 ||
+          row.index >= chunk.length ||
+          seen.has(row.index) ||
+          !Array.isArray(row.embedding) ||
+          !row.embedding.length ||
+          !row.embedding.every(
+            (value) => typeof value === "number" && Number.isFinite(value)
+          )
+        )
+          throw new Error(
+            "GenericOpenAI returned invalid embeddings or document indices."
+          );
+        seen.add(row.index);
+      }
+      allResults.push(...data.sort((a, b) => a.index - b.index));
       reportEmbeddingProgress(allResults.length, textChunks.length);
       if (this.apiRequestDelay) await this.runDelay();
     }
 
+    if (
+      allResults.some(
+        (row) => row.embedding.length !== allResults[0].embedding.length
+      )
+    )
+      throw new Error(
+        "GenericOpenAI returned inconsistent embedding dimensions."
+      );
     return allResults.length > 0 &&
       allResults.every((embd) => embd.hasOwnProperty("embedding"))
       ? allResults.map((embd) => embd.embedding)
