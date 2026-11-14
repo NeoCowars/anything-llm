@@ -51,14 +51,8 @@ app.post(
       const targetFilename = path
         .normalize(filename)
         .replace(/^(\.\.(\/|\\|$))+/, "");
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processSingleFile(targetFilename, options, metadata);
-      response
-        .status(200)
-        .json({ filename: targetFilename, success, reason, documents });
+      const result = await processSingleFile(targetFilename, options, metadata);
+      response.status(200).json({ filename: targetFilename, ...result });
     } catch (e) {
       console.error(e);
       response.status(200).json({
@@ -81,18 +75,12 @@ app.post(
       const targetFilename = path
         .normalize(filename)
         .replace(/^(\.\.(\/|\\|$))+/, "");
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processSingleFile(targetFilename, {
+      const result = await processSingleFile(targetFilename, {
         ...options,
         parseOnly: true,
         absolutePath: options.absolutePath || null,
       });
-      response
-        .status(200)
-        .json({ filename: targetFilename, success, reason, documents });
+      response.status(200).json({ filename: targetFilename, ...result });
     } catch (e) {
       console.error(e);
       response.status(200).json({

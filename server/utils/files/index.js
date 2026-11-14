@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 const { v5: uuidv5, v4: uuidv4 } = require("uuid");
 const { Document } = require("../../models/documents");
 const { DocumentSyncQueue } = require("../../models/documentSyncQueue");
+const { removeIngestionReport } = require("../ingestionReports");
 const documentsPath =
   process.env.NODE_ENV === "development"
     ? path.resolve(__dirname, `../../storage/documents`)
@@ -313,6 +314,14 @@ async function purgeSourceDocument(filename = null) {
     return;
 
   console.log(`Purging source document of ${filename}.`);
+  try {
+    const document = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    removeIngestionReport(document.ingestionReportId);
+  } catch (error) {
+    console.warn(
+      `Could not clean up the document import report: ${error.message}`
+    );
+  }
   fs.rmSync(filePath);
   return;
 }

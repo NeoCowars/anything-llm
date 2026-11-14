@@ -5,6 +5,7 @@ const {
   safeJsonParse,
 } = require("../utils/http");
 const { moveProcessedDocsToFolder } = require("../utils/files");
+const { uploadWarnings } = require("../utils/ingestionReports");
 const { Workspace } = require("../models/workspace");
 const { Document } = require("../models/documents");
 const { DocumentVectors } = require("../models/vectors");
@@ -153,12 +154,13 @@ function workspaceEndpoints(app) {
           return;
         }
 
-        const { success, reason, documents } = await Collector.processDocument(
-          originalname,
-          metadata
-        );
+        const { success, reason, documents, ...ingestion } =
+          await Collector.processDocument(originalname, metadata);
         if (!success) {
-          response.status(500).json({ success: false, error: reason }).end();
+          response
+            .status(500)
+            .json({ success: false, error: reason, ...ingestion })
+            .end();
           return;
         }
 
@@ -178,7 +180,11 @@ function workspaceEndpoints(app) {
           },
           response.locals?.user?.id
         );
-        response.status(200).json({ success: true, error: null });
+        response.status(200).json({
+          success: true,
+          error: null,
+          warnings: uploadWarnings(documents),
+        });
       } catch (e) {
         console.error(e.message, e);
         response.sendStatus(500).end();

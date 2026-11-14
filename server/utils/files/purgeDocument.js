@@ -9,6 +9,7 @@ const {
 } = require(".");
 const { Document } = require("../../models/documents");
 const { Workspace } = require("../../models/workspace");
+const { removeIngestionReport } = require("../ingestionReports");
 
 async function purgeDocument(filename = null) {
   if (!filename || !normalizePath(filename)) return;
@@ -80,6 +81,18 @@ async function purgeFolder(folderName = null) {
   }
 
   await Promise.all(purgePromises.flat().map((f) => f()));
+  for (const file of fs.readdirSync(subFolderPath)) {
+    try {
+      const document = JSON.parse(
+        fs.readFileSync(path.join(subFolderPath, file), "utf8")
+      );
+      removeIngestionReport(document.ingestionReportId);
+    } catch (error) {
+      console.warn(
+        `Could not clean up the document import report: ${error.message}`
+      );
+    }
+  }
   fs.rmSync(subFolderPath, { recursive: true }); // Delete target document-folder and source files.
 
   return;

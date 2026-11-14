@@ -1,5 +1,11 @@
 const { Document } = require("../models/documents");
-const { normalizePath, documentsPath, isWithin } = require("../utils/files");
+const {
+  normalizePath,
+  documentsPath,
+  isWithin,
+  fileData,
+} = require("../utils/files");
+const { readIngestionReport } = require("../utils/ingestionReports");
 const { reqBody } = require("../utils/http");
 const {
   flexUserRoleValid,
@@ -11,6 +17,36 @@ const path = require("path");
 
 function documentEndpoints(app) {
   if (!app) return;
+  app.post(
+    "/document/ingestion-report",
+    [validatedRequest, flexUserRoleValid([ROLES.admin, ROLES.manager])],
+    async (request, response) => {
+      try {
+        const { docpath, reportId } = reqBody(request);
+        if (
+          (!reportId && (typeof docpath !== "string" || !docpath)) ||
+          (reportId !== undefined &&
+            (typeof reportId !== "string" || !/^[a-f0-9]{64}$/.test(reportId)))
+        )
+          return response.status(400).json({
+            success: false,
+            error: "A document path or valid report ID is required.",
+          });
+        const document = reportId ? null : await fileData(docpath);
+        const report = readIngestionReport(
+          reportId || document?.ingestionReportId
+        );
+        if (!report)
+          return response.status(404).json({
+            success: false,
+            error: "No import report is available for this document.",
+          });
+        response.status(200).json({ success: true, report });
+      } catch (error) {
+        response.status(500).json({ success: false, error: error.message });
+      }
+    }
+  );
   app.post(
     "/document/create-folder",
     [validatedRequest, flexUserRoleValid([ROLES.admin, ROLES.manager])],

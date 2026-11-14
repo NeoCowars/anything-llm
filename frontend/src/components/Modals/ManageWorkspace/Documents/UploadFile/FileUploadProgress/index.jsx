@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, memo } from "react";
 import truncate from "truncate";
-import { CheckCircle, XCircle } from "@phosphor-icons/react";
+import { CheckCircle, XCircle, WarningCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import Workspace from "../../../../../../models/workspace";
 import { humanFileSize, milliToHms } from "../../../../../../utils/numbers";
 import PreLoader from "../../../../../Preloader";
@@ -16,9 +17,11 @@ function FileUploadProgressComponent({
   relativePath = null,
   onSettled,
 }) {
+  const { t } = useTranslation("ingestion");
   const [timerMs, setTimerMs] = useState(10);
   const [status, setStatus] = useState("pending");
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [isFadingOut, setIsFadingOut] = useState(false);
 
   // Every timer this row starts, so nothing fires after unmount.
@@ -58,6 +61,11 @@ function FileUploadProgressComponent({
       if (!response.ok) {
         setStatus("failed");
         setError(data.error);
+      } else if (data.warnings?.length) {
+        setWarning(data.warnings.join("\n"));
+        setStatus("warning");
+        onSettled?.();
+        return;
       } else {
         setStatus("complete");
       }
@@ -125,6 +133,36 @@ function FileUploadProgressComponent({
             {error}
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (status === "warning") {
+    return (
+      <div
+        role="status"
+        className="flex items-start gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3"
+      >
+        <WarningCircle className="h-6 w-6 shrink-0 text-amber-500" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-theme-text-primary">
+            {relativePath || file.name}
+          </p>
+          <p className="text-xs font-semibold text-amber-600">{t("warning")}</p>
+          <p className="whitespace-pre-wrap break-words text-xs text-theme-text-secondary">
+            {warning}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label={t("dismiss")}
+          onClick={(event) => {
+            event.stopPropagation();
+            setFiles((prev) => prev.filter((item) => item.uid !== uuid));
+          }}
+        >
+          <XCircle className="h-5 w-5 text-theme-text-secondary" />
+        </button>
       </div>
     );
   }

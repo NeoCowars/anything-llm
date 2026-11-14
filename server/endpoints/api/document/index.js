@@ -139,15 +139,13 @@ function apiDocumentEndpoints(app) {
           return;
         }
 
-        const { success, reason, documents } = await Collector.processDocument(
-          originalname,
-          metadata
-        );
+        const { success, reason, documents, ...ingestion } =
+          await Collector.processDocument(originalname, metadata);
 
         if (!success) {
           return response
             .status(500)
-            .json({ success: false, error: reason, documents })
+            .json({ success: false, error: reason, documents, ...ingestion })
             .end();
         }
 
@@ -288,14 +286,12 @@ function apiDocumentEndpoints(app) {
         }
 
         // Process the uploaded document with metadata
-        const { success, reason, documents } = await Collector.processDocument(
-          originalname,
-          metadata
-        );
+        const { success, reason, documents, ...ingestion } =
+          await Collector.processDocument(originalname, metadata);
         if (!success) {
           return response
             .status(500)
-            .json({ success: false, error: reason, documents })
+            .json({ success: false, error: reason, documents, ...ingestion })
             .end();
         }
 

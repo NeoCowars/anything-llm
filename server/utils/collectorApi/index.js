@@ -74,7 +74,7 @@ class CollectorApi {
       WhisperGenericOpenAiModel:
         process.env.WHISPER_GENERIC_OPEN_AI_MODEL || null,
       ocr: {
-        langList: process.env.TARGET_OCR_LANG || "eng",
+        langList: process.env.TARGET_OCR_LANG || "chi_sim,eng",
       },
       runtimeSettings: {
         allowAnyIp: process.env.COLLECTOR_ALLOW_ANY_IP ?? "false",

@@ -2,6 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { VALID_LANGUAGE_CODES } = require("./validLangs");
+const { processPages } = require("./processPages");
 
 class OCRLoader {
   /**
@@ -20,7 +21,7 @@ class OCRLoader {
    * @param {Object} options - The options for the OCRLoader.
    * @param {string} options.targetLanguages - The target languages to use for the OCR as a comma separated string. eg: "eng,deu,..."
    */
-  constructor({ targetLanguages = "eng" } = {}) {
+  constructor({ targetLanguages = "chi_sim,eng" } = {}) {
     this.language = this.parseLanguages(targetLanguages);
     this.cacheDir = path.resolve(
       process.env.STORAGE_DIR
@@ -44,17 +45,17 @@ class OCRLoader {
    */
   parseLanguages(language = null) {
     try {
-      if (!language || typeof language !== "string") return ["eng"];
+      if (!language || typeof language !== "string") return ["chi_sim", "eng"];
       const langList = language
         .split(",")
         .map((lang) => (lang.trim() !== "" ? lang.trim() : null))
         .filter(Boolean)
         .filter((lang) => VALID_LANGUAGE_CODES.hasOwnProperty(lang));
-      if (langList.length === 0) return ["eng"];
+      if (langList.length === 0) return ["chi_sim", "eng"];
       return langList;
     } catch (e) {
       this.log(`Error parsing languages: ${e.message}`, e.stack);
-      return ["eng"];
+      return ["chi_sim", "eng"];
     }
   }
 
@@ -64,12 +65,20 @@ class OCRLoader {
 
   /**
    * Loads a PDF file and returns an array of documents.
-   * This function is reserved to parsing for SCANNED documents - digital documents are not supported in this function
+   * Recognizes scanned pages, optionally restricted to selected 1-based page numbers.
+   * @param {string} filePath - The PDF file to recognize.
+   * @param {Object} options - OCR execution options.
+   * @param {number[]|null} options.pageNumbers - Pages to recognize; null means all pages.
    * @returns {Promise<{pageContent: string, metadata: object}[]>} An array of documents with page content and metadata.
    */
   async ocrPDF(
     filePath,
-    { maxExecutionTime = 300_000, batchSize = 10, maxWorkers = null } = {}
+    {
+      maxExecutionTime = 300_000,
+      batchSize = 10,
+      maxWorkers = null,
+      pageNumbers = null,
+    } = {}
   ) {
     if (
       !filePath ||
@@ -80,135 +89,76 @@ class OCRLoader {
       return [];
     }
 
+    if (pageNumbers !== null && !Array.isArray(pageNumbers))
+      throw new TypeError("OCR pageNumbers must be an array of page numbers.");
+    if (pageNumbers?.length === 0) return [];
+
     const documentTitle = path.basename(filePath);
     this.log(`Starting OCR of ${documentTitle}`);
     const pdfjs = await import("pdf-parse/lib/pdf.js/v2.0.550/build/pdf.js");
     let buffer = fs.readFileSync(filePath);
 
     const pdfDocument = await pdfjs.getDocument({ data: buffer });
-
-    const documents = [];
-    const meta = await pdfDocument.getMetadata().catch(() => null);
-    const metadata = {
-      source: filePath,
-      pdf: {
-        version: "v2.0.550",
-        info: meta?.info,
-        metadata: meta?.metadata,
-        totalPages: pdfDocument.numPages,
-      },
-    };
-
-    const pdfSharp = new PDFSharp({
-      validOps: [
-        pdfjs.OPS.paintJpegXObject,
-        pdfjs.OPS.paintImageXObject,
-        pdfjs.OPS.paintInlineImageXObject,
-      ],
-    });
-    await pdfSharp.init();
-
-    const { createWorker, OEM } = require("tesseract.js");
-    const BATCH_SIZE = batchSize;
-    const MAX_EXECUTION_TIME = maxExecutionTime;
-    const NUM_WORKERS = maxWorkers ?? Math.min(os.cpus().length, 4);
-    const totalPages = pdfDocument.numPages;
-    const workerPool = await Promise.all(
-      Array(NUM_WORKERS)
-        .fill(0)
-        .map(() =>
-          createWorker(this.language, OEM.LSTM_ONLY, {
-            cachePath: this.cacheDir,
-          })
-        )
-    );
-
-    const startTime = Date.now();
     try {
-      this.log("Bootstrapping OCR completed successfully!", {
-        MAX_EXECUTION_TIME_MS: MAX_EXECUTION_TIME,
-        BATCH_SIZE,
-        MAX_CONCURRENT_WORKERS: NUM_WORKERS,
-        TOTAL_PAGES: totalPages,
-      });
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              `OCR job took too long to complete (${
-                MAX_EXECUTION_TIME / 1000
-              } seconds)`
+      const targetPages =
+        pageNumbers === null
+          ? Array.from(
+              { length: pdfDocument.numPages },
+              (_, index) => index + 1
             )
-          );
-        }, MAX_EXECUTION_TIME);
-      });
+          : [...new Set(pageNumbers)].sort((a, b) => a - b);
+      if (
+        targetPages.some(
+          (page) =>
+            !Number.isInteger(page) || page < 1 || page > pdfDocument.numPages
+        )
+      )
+        throw new RangeError(
+          "OCR pageNumbers must refer to existing PDF pages."
+        );
+      if (targetPages.length === 0) return [];
 
-      const processPages = async () => {
-        for (
-          let startPage = 1;
-          startPage <= totalPages;
-          startPage += BATCH_SIZE
-        ) {
-          const endPage = Math.min(startPage + BATCH_SIZE - 1, totalPages);
-          const pageNumbers = Array.from(
-            { length: endPage - startPage + 1 },
-            (_, i) => startPage + i
-          );
-          this.log(`Working on pages ${startPage} - ${endPage}`);
-
-          const pageQueue = [...pageNumbers];
-          const results = [];
-          const workerPromises = workerPool.map(async (worker, workerIndex) => {
-            while (pageQueue.length > 0) {
-              const pageNum = pageQueue.shift();
-              this.log(
-                `\x1b[34m[Worker ${
-                  workerIndex + 1
-                }]\x1b[0m assigned pg${pageNum}`
-              );
-              const page = await pdfDocument.getPage(pageNum);
-              const imageBuffer = await pdfSharp.pageToBuffer({ page });
-              if (!imageBuffer) continue;
-              const { data } = await worker.recognize(imageBuffer, {}, "text");
-              this.log(
-                `✅ \x1b[34m[Worker ${
-                  workerIndex + 1
-                }]\x1b[0m completed pg${pageNum}`
-              );
-              results.push({
-                pageContent: data.text,
-                metadata: {
-                  ...metadata,
-                  loc: { pageNumber: pageNum },
-                },
-              });
-            }
-          });
-
-          await Promise.all(workerPromises);
-          documents.push(
-            ...results.sort(
-              (a, b) => a.metadata.loc.pageNumber - b.metadata.loc.pageNumber
-            )
-          );
-        }
-        return documents;
+      const meta = await pdfDocument.getMetadata().catch(() => null);
+      const metadata = {
+        source: filePath,
+        pdf: {
+          version: "v2.0.550",
+          info: meta?.info,
+          metadata: meta?.metadata,
+          totalPages: pdfDocument.numPages,
+        },
       };
 
-      await Promise.race([timeoutPromise, processPages()]);
-    } catch (e) {
-      this.log(`Error: ${e.message}`, e.stack);
+      const pdfSharp = new PDFSharp({
+        validOps: [
+          pdfjs.OPS.paintJpegXObject,
+          pdfjs.OPS.paintImageXObject,
+          pdfjs.OPS.paintInlineImageXObject,
+        ],
+      });
+      const { createWorker, OEM } = require("tesseract.js");
+      return await processPages({
+        pdfDocument,
+        pdfSharp,
+        metadata,
+        targetPages,
+        createWorker: () =>
+          createWorker(this.language, OEM.LSTM_ONLY, {
+            cachePath: this.cacheDir,
+          }),
+        maxWorkers: maxWorkers ?? Math.min(os.cpus().length || 1, 4),
+        batchSize,
+        maxExecutionTime,
+        destroyDocument: false,
+        log: (...args) => this.log(...args),
+      });
     } finally {
-      global.Image = undefined;
-      await Promise.all(workerPool.map((worker) => worker.terminate()));
+      try {
+        await pdfDocument.destroy?.();
+      } catch (error) {
+        this.log(`PDF cleanup failed: ${error.message}`);
+      }
     }
-
-    this.log(`Completed OCR of ${documentTitle}!`, {
-      documentsParsed: documents.length,
-      totalPages: totalPages,
-      executionTime: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
-    });
-    return documents;
   }
 
   /**

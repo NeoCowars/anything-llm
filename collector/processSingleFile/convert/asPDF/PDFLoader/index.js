@@ -1,9 +1,10 @@
 const fs = require("fs").promises;
 
 class PDFLoader {
-  constructor(filePath, { splitPages = true } = {}) {
+  constructor(filePath, { splitPages = true, includeEmptyPages = false } = {}) {
     this.filePath = filePath;
     this.splitPages = splitPages;
+    this.includeEmptyPages = includeEmptyPages;
   }
 
   async load() {
@@ -17,68 +18,80 @@ class PDFLoader {
       useSystemFonts: true,
     }).promise;
 
-    const meta = await pdf.getMetadata().catch(() => null);
-    const documents = [];
+    try {
+      const meta = await pdf.getMetadata().catch(() => null);
+      const documents = [];
 
-    for (let i = 1; i <= pdf.numPages; i += 1) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-
-      if (content.items.length === 0) {
-        continue;
-      }
-
-      let lastY;
-      const textItems = [];
-      for (const item of content.items) {
-        if ("str" in item) {
-          if (lastY === item.transform[5] || !lastY) {
-            textItems.push(item.str);
-          } else {
-            textItems.push(`\n${item.str}`);
+      for (let i = 1; i <= pdf.numPages; i += 1) {
+        let text = "";
+        let extractionError = null;
+        try {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          let lastY;
+          const textItems = [];
+          for (const item of content.items) {
+            if ("str" in item) {
+              if (lastY === item.transform[5] || !lastY) {
+                textItems.push(item.str);
+              } else {
+                textItems.push(`\n${item.str}`);
+              }
+              lastY = item.transform[5];
+            }
           }
-          lastY = item.transform[5];
+          text = textItems.join("").trim();
+        } catch (error) {
+          if (!this.includeEmptyPages) throw error;
+          extractionError = error.message;
         }
+
+        if (!text && !this.includeEmptyPages) continue;
+        documents.push({
+          pageContent: text,
+          metadata: {
+            source: this.filePath,
+            pdf: {
+              version,
+              info: meta?.info,
+              metadata: meta?.metadata,
+              totalPages: pdf.numPages,
+            },
+            loc: { pageNumber: i },
+            ...(extractionError ? { extractionError } : {}),
+          },
+        });
       }
 
-      const text = textItems.join("");
-      documents.push({
-        pageContent: text.trim(),
-        metadata: {
-          source: this.filePath,
-          pdf: {
-            version,
-            info: meta?.info,
-            metadata: meta?.metadata,
-            totalPages: pdf.numPages,
-          },
-          loc: { pageNumber: i },
-        },
-      });
-    }
+      if (this.splitPages) {
+        return documents;
+      }
 
-    if (this.splitPages) {
-      return documents;
-    }
+      if (documents.length === 0) {
+        return [];
+      }
 
-    if (documents.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        pageContent: documents.map((doc) => doc.pageContent).join("\n\n"),
-        metadata: {
-          source: this.filePath,
-          pdf: {
-            version,
-            info: meta?.info,
-            metadata: meta?.metadata,
-            totalPages: pdf.numPages,
+      return [
+        {
+          pageContent: documents.map((doc) => doc.pageContent).join("\n\n"),
+          metadata: {
+            source: this.filePath,
+            pdf: {
+              version,
+              info: meta?.info,
+              metadata: meta?.metadata,
+              totalPages: pdf.numPages,
+            },
           },
         },
-      },
-    ];
+      ];
+    } finally {
+      try {
+        await pdf.destroy?.();
+      } catch (error) {
+        console.warn(`PDF cleanup failed: ${error.message}`);
+      }
+    }
   }
 
   async getPdfJS() {
