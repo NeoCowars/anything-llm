@@ -1,7 +1,70 @@
 const { Telemetry } = require("../../models/telemetry");
 const { resetAllVectorStores } = require("../vectorStore/resetAllVectorStores");
+const { isSafeConfigString } = require("../EmbeddingRerankers/config");
 
 const KEY_MAPPING = {
+  // Document reranking. Credentials are only returned as a configured flag.
+  RerankProvider: {
+    envKey: "RERANK_PROVIDER",
+    checks: [
+      (value) =>
+        ["native", "cohere", "tei"].includes(value)
+          ? null
+          : "Invalid rerank provider.",
+    ],
+  },
+  RerankEndpoint: {
+    envKey: "RERANK_ENDPOINT",
+    checks: [
+      optional((value) => {
+        try {
+          const url = new URL(value);
+          return ["http:", "https:"].includes(url.protocol) &&
+            !url.username &&
+            !url.password &&
+            !url.hash
+            ? null
+            : "Invalid rerank endpoint.";
+        } catch {
+          return "Invalid rerank endpoint.";
+        }
+      }),
+    ],
+  },
+  RerankModel: {
+    envKey: "RERANK_MODEL",
+    checks: [
+      (value) => (isSafeConfigString(value) ? null : "Invalid rerank model."),
+    ],
+  },
+  RerankApiKey: {
+    envKey: "RERANK_API_KEY",
+    checks: [
+      (value) => (isSafeConfigString(value) ? null : "Invalid rerank key."),
+    ],
+  },
+  RerankCandidateCount: {
+    envKey: "RERANK_CANDIDATE_COUNT",
+    checks: [
+      (value) =>
+        Number.isInteger(Number(value)) &&
+        Number(value) >= 1 &&
+        Number(value) <= 200
+          ? null
+          : "Candidate count must be 1–200.",
+    ],
+  },
+  RerankTimeoutMs: {
+    envKey: "RERANK_TIMEOUT_MS",
+    checks: [
+      (value) =>
+        Number.isInteger(Number(value)) &&
+        Number(value) >= 100 &&
+        Number(value) <= 120000
+          ? null
+          : "Timeout must be 100–120000 ms.",
+    ],
+  },
   LLMProvider: {
     envKey: "LLM_PROVIDER",
     checks: [isNotEmpty, supportedLLM],

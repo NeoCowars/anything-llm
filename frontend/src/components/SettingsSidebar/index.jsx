@@ -240,6 +240,12 @@ const SidebarOptions = ({ user = null, t }) => (
               roles: ["admin"],
             },
             {
+              btnText: t("reranking:title"),
+              href: paths.settings.reranking(),
+              flex: true,
+              roles: ["admin"],
+            },
+            {
               btnText: t("settings.text-splitting"),
               href: paths.settings.embedder.chunkingPreference(),
               flex: true,

@@ -12,6 +12,11 @@ class VectorDatabase {
     if (this.constructor === VectorDatabase) {
       throw new Error("VectorDatabase cannot be instantiated directly");
     }
+    const retrieve = this.performSimilaritySearch.bind(this);
+    this.performSimilaritySearch = (params) => {
+      const { searchWithReranking } = require("../EmbeddingRerankers/search");
+      return searchWithReranking(this, retrieve, params);
+    };
   }
 
   /**

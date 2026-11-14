@@ -135,6 +135,7 @@ export default {
     embeddingPreference: () => {
       return "/settings/embedding-preference";
     },
+    reranking: () => "/settings/reranking",
     imageGenerationPreference: () => {
       return "/settings/image-generation-preference";
     },

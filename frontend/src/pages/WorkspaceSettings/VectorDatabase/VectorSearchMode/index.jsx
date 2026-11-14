@@ -1,23 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { SavedIndicator } from "@/components/AutosaveForm";
 
-// We dont support all vectorDBs yet for reranking due to complexities of how each provider
-// returns information. We need to normalize the response data so Reranker can be used for each provider.
-const supportedVectorDBs = ["lancedb"];
-const hint = {
-  default: {
-    title: "Default",
-    description:
-      "This is the fastest performance, but may not return the most relevant results leading to model hallucinations.",
-  },
-  rerank: {
-    title: "Accuracy Optimized",
-    description:
-      "LLM responses may take longer to generate, but your responses will be more accurate and relevant.",
-  },
-};
+const supportedVectorDBs = ["lancedb", "chroma", "milvus"];
 
 export default function VectorSearchMode({ workspace }) {
+  const { t } = useTranslation();
   const [selection, setSelection] = useState(
     workspace?.vectorSearchMode ?? "default"
   );
@@ -28,11 +16,15 @@ export default function VectorSearchMode({ workspace }) {
     <div className="flex flex-col">
       <div className="flex flex-col gap-y-[8px]">
         <label htmlFor="name" className="block input-label">
-          Search Preference
+          {t("reranking:workspaceTitle")}
           <SavedIndicator name="vectorSearchMode" />
         </label>
         <p className="text-white text-opacity-60 text-xs font-medium">
-          {hint[selection]?.description}
+          {t(
+            selection === "rerank"
+              ? "reranking:enabledHint"
+              : "reranking:disabledHint"
+          )}
         </p>
       </div>
       <select
@@ -42,8 +34,8 @@ export default function VectorSearchMode({ workspace }) {
         onChange={(e) => setSelection(e.target.value)}
         required={true}
       >
-        <option value="default">Default</option>
-        <option value="rerank">Accuracy Optimized</option>
+        <option value="default">{t("reranking:disabled")}</option>
+        <option value="rerank">{t("reranking:enabled")}</option>
       </select>
     </div>
   );

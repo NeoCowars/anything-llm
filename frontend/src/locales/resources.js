@@ -1,3 +1,4 @@
+import reranking from "./reranking.js";
 // Looking for a language to translate AnythingLLM to?
 // Create a `common.js` file in the language's ISO code https://www.w3.org/International/O-charset-lang.html
 // eg: Spanish => es/common.js
@@ -146,3 +147,6 @@ export const resources = {
     common: Hungarian,
   },
 };
+
+resources.en.reranking = reranking.en;
+resources.zh.reranking = reranking.zh;
