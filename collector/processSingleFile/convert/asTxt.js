@@ -1,5 +1,6 @@
 const { v4 } = require("uuid");
 const fs = require("fs");
+const path = require("path");
 const { tokenizeString } = require("../../utils/tokenizer");
 const {
   createdDate,
@@ -18,12 +19,23 @@ async function asTxt({
 }) {
   let content = "";
   let decoded;
+  const extension = path.extname(filename).toLowerCase();
+  const documentFormat =
+    { ".md": "markdown", ".csv": "csv", ".json": "json", ".html": "markdown" }[
+      extension
+    ] || "text";
   try {
     decoded = decodeText(
       fs.readFileSync(fullFilePath),
       options.textEncoding || metadata.textEncoding || "auto"
     );
     content = decoded.content;
+    if (extension === ".html") {
+      const {
+        documentHtmlToMarkdown,
+      } = require("../../processLink/helpers/htmlToMarkdown");
+      content = documentHtmlToMarkdown(content);
+    }
   } catch (err) {
     console.error("Could not read file!", err);
     const report = createReport({
@@ -80,6 +92,7 @@ async function asTxt({
     published: createdDate(fullFilePath),
     wordCount: content.split(" ").length,
     pageContent: content,
+    documentFormat,
     token_count_estimate: tokenizeString(content),
     ...ingestion,
   };

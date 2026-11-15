@@ -95,3 +95,5 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand collect
 应用改动后需重新启动采集器和服务端，并使用新的前端构建。已有文档需重新导入和重新向量化，才能补上此前遗漏的文字；单独重新向量化旧的解析结果不会重新执行 OCR。
 
 后续按大类推进：结构化解析与 OCR 质量、长文档与中英文切块、复杂表格结构及精确查询。语义切块、Agent 切块、GraphRAG 和关系存储均未在本类引入；它们不能补回导入阶段未提取到的原文。
+
+后续结构解析与结构感知切块的实现见 [第二大类说明](./document-structure.zh-CN.md)。本文的格式覆盖范围记录第一大类完成时的状态。

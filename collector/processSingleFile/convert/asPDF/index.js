@@ -173,6 +173,7 @@ async function asPdf({
     published: createdDate(fullFilePath),
     wordCount: content.split(" ").length,
     pageContent: content,
+    documentFormat: "text",
     token_count_estimate: tokenizeString(content),
     ...ingestion,
   };

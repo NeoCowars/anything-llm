@@ -165,6 +165,7 @@ class PineconeDB extends VectorDatabase {
           { label: "text_splitter_chunk_overlap" },
           20
         ),
+        documentFormat: metadata.documentFormat,
         chunkHeaderMeta: TextSplitter.buildHeaderMeta(metadata),
         chunkPrefix: EmbedderEngine?.embeddingPrefix,
       });

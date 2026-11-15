@@ -5,6 +5,11 @@ jest.mock("../../utils/files", () => ({
   writeToServerDocuments: jest.fn(({ data }) => data),
 }));
 jest.mock("../../utils/tokenizer", () => ({ tokenizeString: () => 10 }));
+jest.mock("../../processLink/helpers/htmlToMarkdown", () => ({
+  documentHtmlToMarkdown: jest.fn(
+    () => "# 中文标题\n\n| 项目 | 金额 |\n| --- | --- |\n| A | 100 |"
+  ),
+}));
 jest.mock("uuid", () => ({ v4: () => "test-id" }), { virtual: true });
 jest.mock("slugify", () => ({ default: (name) => name }), { virtual: true });
 jest.mock("../../utils/ingestion", () => {
@@ -40,6 +45,20 @@ test("GBK reaches the written document as Chinese with encoding and report metad
     ingestionStatus: "complete",
     ingestionWarning: expect.stringContaining("inferred"),
     ingestionReportId: "report-id",
+    documentFormat: "csv",
+  });
+});
+
+test("local HTML passes through structural conversion after strict decoding", async () => {
+  fs.readFileSync.mockReturnValue(Buffer.from("<h1>中文标题</h1>"));
+  const result = await asTxt({
+    filename: "report.html",
+    fullFilePath: "report.html",
+  });
+  expect(result.documents[0]).toMatchObject({
+    documentFormat: "markdown",
+    sourceEncoding: "utf-8",
+    pageContent: expect.stringContaining("# 中文标题"),
   });
 });
 

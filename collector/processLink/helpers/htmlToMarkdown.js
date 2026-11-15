@@ -448,4 +448,30 @@ function stripCitations(root) {
   }
 }
 
-module.exports = { htmlToMarkdown };
+// Local documents already define their content boundaries. Do not apply the
+// website-specific article selection, link pruning or citation removal here.
+function documentHtmlToMarkdown(html) {
+  const turndown = new TurndownService({
+    headingStyle: "atx",
+    codeBlockStyle: "fenced",
+    bulletListMarker: "-",
+  });
+  turndown.remove(["script", "style", "noscript", "iframe"]);
+  addTableRules(turndown);
+  turndown.addRule("documentLineBreak", {
+    filter: "br",
+    replacement: (_content, node) => {
+      for (let parent = node.parentNode; parent; parent = parent.parentNode)
+        if (parent.nodeName === "TD" || parent.nodeName === "TH") return "<br>";
+      return "\n";
+    },
+  });
+  turndown.addRule("documentImage", {
+    filter: "img",
+    replacement: (_content, node) =>
+      ` [图片 / image: ${node.getAttribute("alt") || "OCR required"}] `,
+  });
+  return turndown.turndown(html).trim();
+}
+
+module.exports = { htmlToMarkdown, documentHtmlToMarkdown };

@@ -1,3 +1,5 @@
+const { splitStructure } = require("../documentStructure/split");
+
 /**
  * @typedef {object} DocumentMetadata
  * @property {string} id - eg; "123e4567-e89b-12d3-a456-426614174000"
@@ -28,6 +30,8 @@ class TextSplitter {
    * @param {number} [config.chunkSize = 1000] - The size of each chunk.
    * @param {number} [config.chunkOverlap = 20] - The overlap between chunks.
    * @param {Object} [config.chunkHeaderMeta = null] - Metadata to be added to the start of each chunk - will come after the prefix.
+   * @param {string} [config.documentFormat = "text"] - Source representation, such as markdown, csv or json.
+   * @param {boolean} [config.structureAware = true] - Use detected headings, clauses and table records. The environment default can be disabled with DOCUMENT_STRUCTURE_CHUNKING=false.
    */
   constructor(config = {}) {
     this.config = config;
@@ -172,10 +176,11 @@ class TextSplitter {
         `\x1b[43m[WARN]\x1b[0m Chunk overlap of ${preferredOverlap} is not smaller than chunk size of ${chunkSize}. Will use an overlap of ${chunkOverlap}.`
       );
 
-    // The header is prepended to every chunk after splitting, so chunks may exceed chunkSize.
+    // The legacy fallback still prepends this header after splitting. Structured
+    // chunks reserve its length as part of the configured budget.
     if (chunkHeader.length > 0)
       this.log(
-        `\x1b[43m[WARN]\x1b[0m Chunk header of ${chunkHeader.length} chars is prepended to each chunk - chunks may be up to ${chunkSize + chunkHeader.length} chars.`
+        `\x1b[43m[WARN]\x1b[0m Chunk header of ${chunkHeader.length} chars is reserved for structured chunks. Legacy fallback chunks may be up to ${chunkSize + chunkHeader.length} chars.`
       );
 
     return new RecursiveSplitter({
@@ -186,6 +191,18 @@ class TextSplitter {
   }
 
   async splitText(documentText) {
+    const structureAware =
+      this.config.structureAware ??
+      process.env.DOCUMENT_STRUCTURE_CHUNKING !== "false";
+    if (structureAware) {
+      const header = this.stringifyHeader();
+      const chunks = await splitStructure(documentText, {
+        format: this.config.documentFormat,
+        chunkSize: this.#splitter.engine.chunkSize - header.length,
+        chunkOverlap: this.#splitter.engine.chunkOverlap,
+      });
+      if (chunks) return chunks.map((chunk) => header + chunk);
+    }
     return this.#splitter._splitText(documentText);
   }
 }

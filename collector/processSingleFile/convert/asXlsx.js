@@ -100,6 +100,7 @@ async function asXlsx({
         published: createdDate(fullFilePath),
         wordCount: totalWordCount,
         pageContent: combinedContent,
+        documentFormat: "text",
         token_count_estimate: tokenizeString(combinedContent),
       };
 
@@ -140,6 +141,7 @@ async function asXlsx({
           published: createdDate(fullFilePath),
           wordCount: wordCount,
           pageContent: content,
+          documentFormat: "csv",
           token_count_estimate: tokenizeString(content),
         };
 
